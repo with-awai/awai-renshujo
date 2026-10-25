@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Instagram キャプションチェック</title>
+<style>
+  :root { --ink: #1f1d27; --sub: #6b6576; --line: #e0d8c8; --accent: #c98a2b; --bg: #fbf9f4; --over: #c62828; --over-bg: #fdecea; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 16px 48px; background: var(--bg); color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; line-height: 1.7;
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  a.back { font-size: 13px; color: var(--sub); }
+  h1 { margin: 8px 0 4px; font-size: 22px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  p.lead { margin: 0 0 16px; color: var(--sub); font-size: 14px; }
+  textarea {
+    width: 100%; min-height: 220px; padding: 12px; font: inherit; font-size: 16px;
+    background: #fff; color: var(--ink); border: 2px solid var(--line); border-radius: 10px; resize: vertical;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  textarea.over { border-color: var(--over); background: var(--over-bg); }
+  .meters { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .meter { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .meter .label { font-size: 13px; color: var(--sub); }
+  .meter .count { font-size: 24px; font-weight: 700; }
+  .meter .count small { font-size: 14px; color: var(--sub); font-weight: 400; }
+  .meter .msg { font-size: 13px; color: var(--sub); }
+  .meter.over { border-color: var(--over); background: var(--over-bg); }
+  .meter.over .count, .meter.over .msg { color: var(--over); }
+  .preview {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+    font-size: 14px; white-space: pre-wrap; word-break: break-all; min-height: 3em;
+  }
+  .preview .more { color: var(--sub); }
+  .preview .empty { color: var(--sub); }
+  .note { font-size: 12px; color: var(--sub); margin: 6px 0 0; }
+  .buttons { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    padding: 8px 16px; font: inherit; font-size: 14px;
+    background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+  }
+  @media (max-width: 360px) { .meters { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="../../">← 練習場にもどる</a>
+  <h1>Instagram キャプションチェック</h1>
+  <p class="lead">投稿の文章を貼りつけると、文字数とハッシュタグの数を数えます。上限を超えると赤くなります。</p>
+
+  <textarea id="text" placeholder="ここにキャプションの下書きを貼りつけてください"></textarea>
+
+  <div class="meters">
+    <div class="meter" id="charBox">
+      <div class="label">文字数</div>
+      <div class="count"><span id="charNum">0</span><small> / 2200字</small></div>
+      <div class="msg" id="charMsg">あと2200字書けます</div>
+    </div>
+    <div class="meter" id="tagBox">
+      <div class="label">ハッシュタグ</div>
+      <div class="count"><span id="tagNum">0</span><small> / 30個</small></div>
+      <div class="msg" id="tagMsg">あと30個つけられます</div>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button type="button" id="copy">コピーする</button>
+    <button type="button" id="clear">消す</button>
+  </div>
+
+  <h2>フィードでの見え方（目安）</h2>
+  <div class="preview" id="preview"><span class="empty">ここに最初の部分が表示されます</span></div>
+  <p class="note">フィードでは最初の2行ほどだけが見え、残りは「続きを読む」に隠れます。お店の名前や伝えたいことは最初に書きましょう。</p>
+</main>
+<script>
+  const CHAR_LIMIT = 2200;
+  const TAG_LIMIT = 30;
+  const PREVIEW_CHARS = 125;
+  const PREVIEW_LINES = 2;
+
+  const text = document.getElementById('text');
+  const $ = (id) => document.getElementById(id);
+
+  // 絵文字や結合文字も見た目どおり1字として数える
+  const seg = window.Intl && Intl.Segmenter ? new Intl.Segmenter('ja', { granularity: 'grapheme' }) : null;
+  function chars(s) {
+    return seg ? Array.from(seg.segment(s), (x) => x.segment) : Array.from(s);
+  }
+
+  // 「#」または全角「＃」のあとに文字が続くものをハッシュタグとして数える
+  function countTags(s) {
+    const m = s.match(/[#＃][^\s#＃]+/g);
+    return m ? m.length : 0;
+  }
+
+  function preview(s) {
+    const box = $('preview');
+    box.textContent = '';
+    if (!s.trim()) {
+      const e = document.createElement('span');
+      e.className = 'empty';
+      e.textContent = 'ここに最初の部分が表示されます';
+      box.appendChild(e);
+      return;
+    }
+    const lines = s.split('\n');
+    let head = lines.slice(0, PREVIEW_LINES).join('\n');
+    const list = chars(head);
+    if (list.length > PREVIEW_CHARS) head = list.slice(0, PREVIEW_CHARS).join('');
+    box.appendChild(document.createTextNode(head));
+    if (head.length < s.length) {
+      const more = document.createElement('span');
+      more.className = 'more';
+      more.textContent = '… 続きを読む';
+      box.appendChild(more);
+    }
+  }
+
+  function update() {
+    const s = text.value;
+    const n = chars(s).length;
+    const t = countTags(s);
+    const charOver = n > CHAR_LIMIT;
+    const tagOver = t > TAG_LIMIT;
+
+    $('charNum').textContent = n;
+    $('charMsg').textContent = charOver ? (n - CHAR_LIMIT) + '字オーバーしています' : 'あと' + (CHAR_LIMIT - n) + '字書けます';
+    $('charBox').classList.toggle('over', charOver);
+
+    $('tagNum').textContent = t;
+    $('tagMsg').textContent = tagOver ? (t - TAG_LIMIT) + '個多すぎます' : 'あと' + (TAG_LIMIT - t) + '個つけられます';
+    $('tagBox').classList.toggle('over', tagOver);
+
+    text.classList.toggle('over', charOver || tagOver);
+    preview(s);
+  }
+
+  text.addEventListener('input', update);
+  $('clear').addEventListener('click', () => { text.value = ''; update(); text.focus(); });
+  $('copy').addEventListener('click', async () => {
+    const btn = $('copy');
+    try {
+      await navigator.clipboard.writeText(text.value);
+      btn.textContent = 'コピーしました';
+    } catch (e) {
+      text.select();
+      btn.textContent = '選択しました（長押しでコピー）';
+    }
+    setTimeout(() => { btn.textContent = 'コピーする'; }, 1500);
+  });
+  update();
+</script>
+</body>
+</html>
